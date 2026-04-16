@@ -1,6 +1,6 @@
 
 **Narrative History**
-The city hall of a fictional metropolis (**"New Metropolis"**) needs to understand if the density of public transportation in certain neighborhoods helps reduce air pollution. Currently, air quality data and infrastructure data are in different silos. The urban planning department needs a centralized repository to correlate this data and plan new bike lanes and bus lanes.
+The city hall of São Paulo needs to understand if the density of public transportation in certain neighborhoods helps reduce air pollution. Currently, air quality data and infrastructure data are in different silos. The urban planning department needs a centralized repository to correlate this data and plan new bike lanes and bus lanes.
 
 **Clear Objectives**
 * **What?** 
