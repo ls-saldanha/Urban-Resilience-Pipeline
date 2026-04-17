@@ -1,4 +1,4 @@
-import requests
+import datetime
 from pydantic import BaseModel, ValidationError
 from typing import List, Optional
 
@@ -11,33 +11,51 @@ class OpenAQMeasurement(BaseModel):
     parameter: str
     value: float
     unit: str
-    
-    # We use Optional in case the API sometimes misses a timestamp
     date: dict 
 
 # ==========================================
-# 2. The Extraction Logic
+# 2. The Extraction Logic (MOCKED FOR V3)
 # ==========================================
 def fetch_openaq_data(city: str, limit: int = 10) -> List[dict]:
     """
-    Makes an HTTP GET request to the OpenAQ API.
-    Returns a list of raw dictionaries.
+    MOCK FUNCTION: Simulates fetching data from OpenAQ v3.
+    TODO: Replace with actual requests.get() once OpenAQ API Key is registered.
     """
-    url = f"https://api.openaq.org/v2/measurements"
-    params = {
-        "city": city,
-        "limit": limit
-    }
-    headers = {"Accept": "application/json"}
+    print(f"Fetching [MOCKED] data for {city}...")
     
-    print(f"Fetching data for {city}...")
-    response = requests.get(url, headers=headers, params=params)
+    # We use the new, timezone-aware method introduced in recent Python versions
+    current_time = datetime.datetime.now(datetime.UTC).isoformat()
     
-    # This automatically raises an error if the request fails (e.g., 404 or 500)
-    response.raise_for_status() 
     
-    # Extract the 'results' array from the JSON response
-    return response.json().get('results', [])
+    mock_results = [
+        {
+            "locationId": 101,
+            "location": "São Paulo - Ibirapuera",
+            "parameter": "pm25",
+            "value": 15.2,
+            "unit": "µg/m³",
+            "date": {"utc": current_time, "local": current_time}
+        },
+        {
+            "locationId": 102,
+            "location": "São Paulo - Pinheiros",
+            "parameter": "no2",
+            "value": 32.0,
+            "unit": "ppm",
+            "date": {"utc": current_time, "local": current_time}
+        },
+        {   
+            # Let's inject a "bad" record to prove our Pydantic bouncer works!
+            "locationId": 103,
+            "location": "São Paulo - Centro",
+            "parameter": "o3",
+            "value": "ERROR_SENSOR_OFFLINE", # Pydantic will catch this string!
+            "unit": "ppm",
+            "date": {"utc": current_time, "local": current_time}
+        }
+    ]
+    
+    return mock_results[:limit]
 
 # ==========================================
 # 3. The Validation Logic
@@ -49,13 +67,12 @@ def validate_payload(raw_data: List[dict]) -> List[dict]:
     valid_data = []
     for item in raw_data:
         try:
-            # We unpack the dictionary (**) into the Pydantic class
             validated_item = OpenAQMeasurement(**item)
-            
-            # If it succeeds, we convert it back to a clean dictionary
             valid_data.append(validated_item.model_dump())
         except ValidationError as e:
-            print(f"Validation Error! Dropping record. Reason: {e}")
+            # It will catch the "ERROR_SENSOR_OFFLINE" string!
+            print(f"\n[!] Validation Error! Dropping record for {item.get('location')}.")
+            print(f"    Reason: The 'value' field must be a valid number.\n")
             
     return valid_data
 
@@ -63,15 +80,15 @@ def validate_payload(raw_data: List[dict]) -> List[dict]:
 # 4. Main Execution Block
 # ==========================================
 if __name__ == "__main__":
-    target_city = "Rio de Janeiro"
+    target_city = "São Paulo"
     
-    # Step A: Fetch
+    # Step A: Fetch (Mocked)
     raw_measurements = fetch_openaq_data(city=target_city, limit=5)
     
     # Step B: Validate
     clean_measurements = validate_payload(raw_measurements)
     
-    # Step C: Inspect the result (Baby steps!)
+    # Step C: Inspect the result
     print(f"\nSuccessfully validated {len(clean_measurements)} records.")
     for record in clean_measurements:
         print(f" - {record['location']}: {record['parameter']} = {record['value']} {record['unit']}")
