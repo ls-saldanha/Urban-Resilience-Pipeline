@@ -1,4 +1,5 @@
 .venv
 .DS_Store
 __pycache__/
-*/Users/lucassal/Documents/Work/Projetos/urban-resilience-pipeline/doc_urban_resilience_pipeline/.obsidian
+.obsidian/
+doc_urban_resilience_pipeline/.obsidian/

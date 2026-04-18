@@ -1,78 +1,85 @@
-import datetime
+import os
+import requests
+import json
+from dotenv import load_dotenv, find_dotenv
 from pydantic import BaseModel, ValidationError
 from typing import List, Optional
 
-# ==========================================
-# 1. The Data Contract (Pydantic Models)
-# ==========================================
-class OpenAQMeasurement(BaseModel):
-    locationId: int
-    location: str
-    parameter: str
-    value: float
-    unit: str
-    date: dict 
+load_dotenv(find_dotenv())
 
 # ==========================================
-# 2. The Extraction Logic (MOCKED FOR V3)
+# 1. The Data Contract (Source-Aligned)
 # ==========================================
-def fetch_openaq_data(city: str, limit: int = 10) -> List[dict]:
-    """
-    MOCK FUNCTION: Simulates fetching data from OpenAQ v3.
-    TODO: Replace with actual requests.get() once OpenAQ API Key is registered.
-    """
-    print(f"Fetching [MOCKED] data for {city}...")
+class DatetimeDef(BaseModel):
+    utc: str
+    local: str
+
+class CoordinatesDef(BaseModel):
+    latitude: float
+    longitude: float
+
+class OpenAQMeasurement(BaseModel):
+    datetime: DatetimeDef
+    value: float
+    coordinates: Optional[CoordinatesDef] = None
+    sensorsId: int
+    locationsId: int
+
+# ==========================================
+# 2. The Extraction Logic
+# ==========================================
+def get_rio_locations(api_key: str) -> List[int]:
+    """Finds all OpenAQ location IDs within 25km of central Rio."""
+    url = "https://api.openaq.org/v3/locations"
+    params = {
+        "coordinates": "-22.9068,-43.1729",
+        "radius": 25000, 
+        "limit": 5 
+    }
+    headers = {"X-API-Key": api_key}
     
-    # We use the new, timezone-aware method introduced in recent Python versions
-    current_time = datetime.datetime.now(datetime.UTC).isoformat()
+    print("\n[1/3] Using radar to find sensors in Rio de Janeiro...")
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
     
+    locations = response.json().get('results', [])
+    location_ids = [loc['id'] for loc in locations]
+    print(f"      -> Found {len(location_ids)} active stations: {location_ids}")
+    return location_ids
+
+def fetch_latest_measurements(location_id: int, api_key: str) -> List[dict]:
+    """Fetches the latest air quality readings for a specific station ID."""
+    url = f"https://api.openaq.org/v3/locations/{location_id}/latest"
+    headers = {"X-API-Key": api_key}
     
-    mock_results = [
-        {
-            "locationId": 101,
-            "location": "São Paulo - Ibirapuera",
-            "parameter": "pm25",
-            "value": 15.2,
-            "unit": "µg/m³",
-            "date": {"utc": current_time, "local": current_time}
-        },
-        {
-            "locationId": 102,
-            "location": "São Paulo - Pinheiros",
-            "parameter": "no2",
-            "value": 32.0,
-            "unit": "ppm",
-            "date": {"utc": current_time, "local": current_time}
-        },
-        {   
-            # Let's inject a "bad" record to prove our Pydantic bouncer works!
-            "locationId": 103,
-            "location": "São Paulo - Centro",
-            "parameter": "o3",
-            "value": "ERROR_SENSOR_OFFLINE", # Pydantic will catch this string!
-            "unit": "ppm",
-            "date": {"utc": current_time, "local": current_time}
-        }
-    ]
-    
-    return mock_results[:limit]
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    return response.json().get('results', [])
 
 # ==========================================
 # 3. The Validation Logic
 # ==========================================
 def validate_payload(raw_data: List[dict]) -> List[dict]:
-    """
-    Passes the raw JSON dictionaries through our Pydantic model.
-    """
     valid_data = []
     for item in raw_data:
         try:
-            validated_item = OpenAQMeasurement(**item)
-            valid_data.append(validated_item.model_dump())
+            validated = OpenAQMeasurement(**item)
+            
+            # We flatten the JSON so it's ready for Parquet/BigQuery later
+            clean_record = {
+                "location_id": validated.locationsId,
+                "sensor_id": validated.sensorsId,
+                "measurement_value": validated.value,
+                "utc_timestamp": validated.datetime.utc
+            }
+            
+            if validated.coordinates:
+                clean_record["latitude"] = validated.coordinates.latitude
+                clean_record["longitude"] = validated.coordinates.longitude
+                
+            valid_data.append(clean_record)
         except ValidationError as e:
-            # It will catch the "ERROR_SENSOR_OFFLINE" string!
-            print(f"\n[!] Validation Error! Dropping record for {item.get('location')}.")
-            print(f"    Reason: The 'value' field must be a valid number.\n")
+            print(f"\n[!] Bouncer rejected a record! Error: {e}")
             
     return valid_data
 
@@ -80,15 +87,22 @@ def validate_payload(raw_data: List[dict]) -> List[dict]:
 # 4. Main Execution Block
 # ==========================================
 if __name__ == "__main__":
-    target_city = "São Paulo"
+    API_KEY = os.getenv("OPENAQ_API_KEY")
+    if not API_KEY:
+        print("ERROR: Missing API Key!")
+        exit(1)
+        
+    rio_station_ids = get_rio_locations(API_KEY)
     
-    # Step A: Fetch (Mocked)
-    raw_measurements = fetch_openaq_data(city=target_city, limit=5)
+    print("\n[2/3] Fetching and validating data for each station...")
+    all_clean_measurements = []
     
-    # Step B: Validate
-    clean_measurements = validate_payload(raw_measurements)
+    for station_id in rio_station_ids:
+        raw_data = fetch_latest_measurements(station_id, API_KEY)
+        clean_data = validate_payload(raw_data)
+        all_clean_measurements.extend(clean_data)
+        
+    print(f"\n[3/3] Success! Validated {len(all_clean_measurements)} total records.")
     
-    # Step C: Inspect the result
-    print(f"\nSuccessfully validated {len(clean_measurements)} records.")
-    for record in clean_measurements:
-        print(f" - {record['location']}: {record['parameter']} = {record['value']} {record['unit']}")
+    # Let's look at the first 3 perfectly clean, flattened records
+    print(json.dumps(all_clean_measurements[:3], indent=4))
