@@ -3,7 +3,11 @@
 __pycache__/
 .obsidian/
 doc_urban_resilience_pipeline/
-*.json
+
 # Local secrets and environment overrides
 .env
 .env.*
+gcp_credentials.json
+
+# Ignore local testing data
+data_lake/
