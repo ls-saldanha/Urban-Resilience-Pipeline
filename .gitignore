@@ -2,4 +2,8 @@
 .DS_Store
 __pycache__/
 .obsidian/
-doc_urban_resilience_pipeline/.obsidian/
+doc_urban_resilience_pipeline/
+*.json
+# Local secrets and environment overrides
+.env
+.env.*
