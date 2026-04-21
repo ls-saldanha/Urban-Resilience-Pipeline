@@ -16,6 +16,10 @@ def get_bigquery_client():
     if "gcp_service_account" in st.secrets:
         # Convert the TOML secrets back into a Python dictionary
         credentials_dict = dict(st.secrets["gcp_service_account"])
+        
+        # THE FIX: Convert literal "\n" strings back into actual line breaks
+        credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
+        
         credentials = service_account.Credentials.from_service_account_info(credentials_dict)
         return bigquery.Client(credentials=credentials, project=credentials.project_id)
     
@@ -25,7 +29,6 @@ def get_bigquery_client():
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./gcp_credentials.json"
         return bigquery.Client()
 
-client = get_bigquery_client()
 
 # ... (The rest of your code remains exactly the same, starting from your query)
 
