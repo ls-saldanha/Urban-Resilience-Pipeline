@@ -3,49 +3,40 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, to_timestamp, date_format
 
 def process_silver_layer():
-    print("[1/3] Starting PySpark Session (Local Mode)...")
+    print("[1/3] Starting Cloud PySpark Session...")
+    # Notice we removed .master("local[*]") because Dataproc handles the cluster!
     spark = SparkSession.builder \
         .appName("UrbanResilience_SilverLayer") \
-        .master("local[*]") \
         .getOrCreate()
     
     spark.sparkContext.setLogLevel("WARN")
 
-    # 2. Local Paths (Emulating the Cloud)
-    # This reads ANY json file inside our local landing folder
-    source_path = "./data_lake/landing/air_quality/*.json"
-    target_local_path = "./data_lake/silver/air_quality/"
+    # Use your ACTUAL bucket names here
+    landing_bucket = "bkt-urbanresil-landing-dev-sa-east1"
+    silver_bucket = "bkt-urbanresil-silver-dev-sa-east1"
 
-    print(f"[2/3] Reading JSON data from Local Landing Zone...")
-    try:
-        df = spark.read.json(source_path)
-    except Exception as e:
-        print(f"Error reading local data: {e}")
-        return
+    # Cloud GCS Paths
+    source_path = f"gs://{landing_bucket}/landing/air_quality/*.json"
+    target_path = f"gs://{silver_bucket}/air_quality/"
 
-    # 3. Transform: Cast data types and create a Partition Column
-    print("[3/3] Converting to Parquet and Partitioning by Date...")
-    
-    # Check if the dataframe is empty
+    print(f"[2/3] Reading JSON data directly from GCS...")
+    df = spark.read.json(source_path)
+
     if df.isEmpty():
-        print("Error: The dataframe is empty. Did you put the JSON file in the right folder?")
+        print("Dataframe is empty. No files to process.")
         return
 
+    print("[3/3] Converting to Parquet and writing to Silver Bucket...")
     df_transformed = df.withColumn("timestamp_casted", to_timestamp(col("utc_timestamp")))
     df_partitioned = df_transformed.withColumn("ingest_date", date_format(col("timestamp_casted"), "yyyy-MM-dd"))
 
-    # 4. Write to Parquet
+    # Write natively to the cloud
     df_partitioned.write \
         .mode("overwrite") \
         .partitionBy("ingest_date") \
-        .parquet(target_local_path)
+        .parquet(target_path)
         
-    print(f"Success! Parquet files written locally to: {target_local_path}")
-    
-    # Optional: Let's show the schema so you can see Spark's magic!
-    print("\n--- Final Silver Layer Schema ---")
-    df_partitioned.printSchema()
-    
+    print(f"Success! Parquet files written to: {target_path}")
     spark.stop()
 
 if __name__ == "__main__":

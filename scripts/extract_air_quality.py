@@ -1,7 +1,7 @@
 import os
 import requests
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv, find_dotenv
 from pydantic import BaseModel, ValidationError
 from typing import List, Optional
@@ -48,6 +48,25 @@ def fetch_latest_measurements(location_id: int, api_key: str) -> List[dict]:
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     return response.json().get('results', [])
+
+def fetch_measurements(location_id: int):
+    """Fetches air quality data for a specific location for the last 7 days."""
+    
+    # 2. Calculate the "7 days ago" timestamp right before the request
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    url = f"https://api.openaq.org/v3/locations/{location_id}/measurements"
+    
+    # 3. Add 'date_from' to your parameters
+    params = {
+        "limit": 1000,
+        "date_from": seven_days_ago  # <--- This tells the API: "Give me everything since April 14"
+    }
+    
+    headers = {"X-API-Key": os.getenv("OPENAQ_API_KEY")}
+    
+    response = requests.get(url, headers=headers, params=params)
+
 
 # ==========================================
 # 3. Validation Logic

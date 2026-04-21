@@ -13,21 +13,22 @@ st.set_page_config(page_title="Urban Resilience Dashboard", layout="wide")
 # --- Bulletproof Base64 Authentication ---
 @st.cache_resource
 def get_bigquery_client():
-    # 1. Cloud Execution: Decode the unbreakable Base64 string
-    if "GCP_B64" in st.secrets:
-        b64_string = st.secrets["GCP_B64"]
-        # Decode base64 back to a JSON string, then parse it into a dictionary
+    # 1. Check a standard Environment Variable (Works on Cloud & Local)
+    b64_string = os.getenv("GCP_B64")
+    
+    if b64_string:
         json_string = base64.b64decode(b64_string).decode("utf-8")
         credentials_dict = json.loads(json_string)
-        
         credentials = service_account.Credentials.from_service_account_info(credentials_dict)
         return bigquery.Client(credentials=credentials, project=credentials.project_id)
     
-    # 2. Local MacBook Execution: Use the file
+    # 2. Local Fallback
     else:
-        load_dotenv()
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./gcp_credentials.json"
-        return bigquery.Client()
+        key_path = "gcp_credentials.json"
+        if os.path.exists(key_path):
+            return bigquery.Client.from_service_account_json(key_path)
+        else:
+            raise FileNotFoundError("No GCP_B64 env var found and no gcp_credentials.json file found.")
 
 # --- Data Loading ---
 @st.cache_data
