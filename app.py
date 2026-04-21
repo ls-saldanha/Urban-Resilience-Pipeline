@@ -1,9 +1,33 @@
 import streamlit as st
 from google.cloud import bigquery
-import os
+from google.oauth2 import service_account
+import json
 import pandas as pd
 import plotly.express as px
+import os
 from dotenv import load_dotenv
+
+st.set_page_config(page_title="Urban Resilience Dashboard", layout="wide")
+
+# --- Authentication Logic ---
+@st.cache_resource
+def get_bigquery_client():
+    # 1. Try to find Streamlit Cloud Secrets first
+    if "gcp_service_account" in st.secrets:
+        # Convert the TOML secrets back into a Python dictionary
+        credentials_dict = dict(st.secrets["gcp_service_account"])
+        credentials = service_account.Credentials.from_service_account_info(credentials_dict)
+        return bigquery.Client(credentials=credentials, project=credentials.project_id)
+    
+    # 2. Fallback to Local Authentication (MacBook)
+    else:
+        load_dotenv()
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./gcp_credentials.json"
+        return bigquery.Client()
+
+client = get_bigquery_client()
+
+# ... (The rest of your code remains exactly the same, starting from your query)
 
 # Load credentials
 load_dotenv()
