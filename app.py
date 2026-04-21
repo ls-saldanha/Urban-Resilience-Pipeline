@@ -1,3 +1,4 @@
+import textwrap
 import streamlit as st
 from google.cloud import bigquery
 from google.oauth2 import service_account
@@ -10,14 +11,36 @@ from dotenv import load_dotenv
 # 1. Page Config (MUST be the very first Streamlit command)
 st.set_page_config(page_title="Urban Resilience Dashboard", layout="wide")
 
-# 2. Authentication Logic ---
+# 2. Authentication Logic 
 @st.cache_resource
 def get_bigquery_client():
     # 1. Try to find Streamlit Cloud Secrets first
     if "gcp_service_account" in st.secrets:
-        # We bypass TOML completely and read the raw JSON string
-        raw_json_string = st.secrets["gcp_service_account"]
-        credentials_dict = json.loads(raw_json_string)
+        secret_data = st.secrets["gcp_service_account"]
+        
+        # Handle both TOML dictionaries and Raw JSON strings securely
+        if isinstance(secret_data, str):
+            import json
+            credentials_dict = json.loads(secret_data)
+        else:
+            credentials_dict = dict(secret_data)
+            
+        # --- THE BULLETPROOF PEM RECONSTRUCTOR ---
+        pk = credentials_dict.get("private_key", "")
+        
+        if "-----BEGIN PRIVATE KEY-----" in pk and "-----END PRIVATE KEY-----" in pk:
+            # Step A: Extract the raw base64 string without headers
+            base64_str = pk.split("-----BEGIN PRIVATE KEY-----")[1].split("-----END PRIVATE KEY-----")[0]
+            
+            # Step B: Aggressively strip ALL whitespace, spaces, and broken line breaks
+            clean_b64 = "".join(base64_str.split())
+            
+            # Step C: Mathematically chunk it into exactly 64 characters per line (The RFC rule)
+            chunked_b64 = "\n".join(textwrap.wrap(clean_b64, 64))
+            
+            # Step D: Reassemble the perfect cryptographic key
+            credentials_dict["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{chunked_b64}\n-----END PRIVATE KEY-----\n"
+        # -----------------------------------------
         
         credentials = service_account.Credentials.from_service_account_info(credentials_dict)
         return bigquery.Client(credentials=credentials, project=credentials.project_id)
@@ -27,7 +50,7 @@ def get_bigquery_client():
         load_dotenv()
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./gcp_credentials.json"
         return bigquery.Client()
-
+    
 # 3. Data Loading Logic
 @st.cache_data
 def load_data():
