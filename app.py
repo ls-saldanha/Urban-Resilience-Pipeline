@@ -25,7 +25,6 @@ def get_bigquery_client():
         
         # Step 2: Strip all garbage whitespace and rebuild the key perfectly
         begin = "-----BEGIN PRIVATE KEY-----"
-        end = "-----END PRIVATE KEY-----"
         
         if begin in pk and end in pk:
             # Extract only the base64 characters
