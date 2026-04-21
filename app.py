@@ -10,19 +10,36 @@ from dotenv import load_dotenv
 # 1. Page Config (MUST be the very first Streamlit command)
 st.set_page_config(page_title="Urban Resilience Dashboard", layout="wide")
 
-# 2. Authentication Logic
+# 2. Authentication Logic ---
 @st.cache_resource
 def get_bigquery_client():
-    # Try to find Streamlit Cloud Secrets first
+    # 1. Try to find Streamlit Cloud Secrets first
     if "gcp_service_account" in st.secrets:
         credentials_dict = dict(st.secrets["gcp_service_account"])
-        credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
         
-        # Create and return the cloud-authenticated client
+        # --- BULLETPROOF PEM RECONSTRUCTION ---
+        pk = credentials_dict["private_key"]
+        
+        # Step 1: Replace any literal "\n" strings if TOML missed them
+        pk = pk.replace("\\n", "\n")
+        
+        # Step 2: Strip all garbage whitespace and rebuild the key perfectly
+        begin = "-----BEGIN PRIVATE KEY-----"
+        end = "-----END PRIVATE KEY-----"
+        
+        if begin in pk and end in pk:
+            # Extract only the base64 characters
+            base64_string = pk.split(begin)[1].split(end)[0]
+            # Remove ALL spaces, tabs, and line breaks injected by the terminal
+            clean_base64 = "".join(base64_string.split())
+            # Reconstruct the mathematically perfect PEM framing
+            credentials_dict["private_key"] = f"{begin}\n{clean_base64}\n{end}\n"
+        # ---------------------------------------
+        
         credentials = service_account.Credentials.from_service_account_info(credentials_dict)
         return bigquery.Client(credentials=credentials, project=credentials.project_id)
     
-    # Fallback to Local Authentication (MacBook)
+    # 2. Fallback to Local Authentication (MacBook)
     else:
         load_dotenv()
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./gcp_credentials.json"
