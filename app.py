@@ -19,9 +19,6 @@ def get_bigquery_client():
         
         # THE FIX: Convert literal "\n" strings back into actual line breaks
         credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
-        
-        credentials = service_account.Credentials.from_service_account_info(credentials_dict)
-        return bigquery.Client(credentials=credentials, project=credentials.project_id)
     
     # 2. Fallback to Local Authentication (MacBook)
     else:
