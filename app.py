@@ -7,50 +7,47 @@ import plotly.express as px
 import os
 from dotenv import load_dotenv
 
+# 1. Page Config (MUST be the very first Streamlit command)
 st.set_page_config(page_title="Urban Resilience Dashboard", layout="wide")
 
-# --- Authentication Logic ---
+# 2. Authentication Logic
 @st.cache_resource
 def get_bigquery_client():
-    # 1. Try to find Streamlit Cloud Secrets first
+    # Try to find Streamlit Cloud Secrets first
     if "gcp_service_account" in st.secrets:
-        # Convert the TOML secrets back into a Python dictionary
         credentials_dict = dict(st.secrets["gcp_service_account"])
-        
-        # THE FIX: Convert literal "\n" strings back into actual line breaks
         credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
+        
+        # Create and return the cloud-authenticated client
+        credentials = service_account.Credentials.from_service_account_info(credentials_dict)
+        return bigquery.Client(credentials=credentials, project=credentials.project_id)
     
-    # 2. Fallback to Local Authentication (MacBook)
+    # Fallback to Local Authentication (MacBook)
     else:
         load_dotenv()
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./gcp_credentials.json"
         return bigquery.Client()
 
+# 3. Data Loading Logic
+@st.cache_data
+def load_data():
+    # CALL our custom authentication wrapper!
+    client = get_bigquery_client()
+    
+    query = """
+        SELECT * FROM `data-urbanresilience-dev-2335.prod_urban_resilience.gold_air_quality`
+        ORDER BY utc_timestamp DESC
+    """
+    return client.query(query).to_dataframe()
 
-# ... (The rest of your code remains exactly the same, starting from your query)
 
-# Load credentials
-load_dotenv()
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "./gcp_credentials.json"
-
-st.set_page_config(page_title="Urban Resilience Dashboard", layout="wide")
-
+# 4. UI Rendering
 st.title("Urban Resilience: Rio de Janeiro Air Quality")
 st.markdown("""
 This dashboard displays the **Gold Layer** of a Medallion Architecture pipeline. 
 The data is extracted from OpenAQ, validated via Pydantic, processed with PySpark, 
 and stored in BigQuery using idempotent MERGE logic.
 """)
-
-@st.cache_data
-def load_data():
-    client = bigquery.Client()
-    # Replace with your actual project ID if different
-    query = """
-        SELECT * FROM `data-urbanresilience-dev-2335.prod_urban_resilience.gold_air_quality`
-        ORDER BY utc_timestamp DESC
-    """
-    return client.query(query).to_dataframe()
 
 try:
     df = load_data()
